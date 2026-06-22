@@ -1,3 +1,4 @@
+
 {
   "name": "deltex",
   "version": "1.0.0",
@@ -11,8 +12,11 @@
     "start": "react-scripts start",
     "build": "react-scripts build"
   },
+  "engines": {
+    "node": "18.x"
+  },
   "browserslist": {
-    "production": [">0.2%", "not dead"],
-    "development": ["last 1 chrome version"]
+    "production": [">0.2%", "not dead", "not op_mini all"],
+    "development": ["last 1 chrome version", "last 1 firefox version"]
   }
 }
