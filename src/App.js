@@ -57,29 +57,17 @@ function DeltexLogo({ size = 36 }) {
   );
 }
 
-// Codes CFTC pour chaque marche
-const COT_CODES = {
-  gold: "088691",
-  wti: "067651",
-  eurusd: "099741",
-  jpyusd: "097741",
-  sp500: "13874A",
-  nasdaq: "20974P",
-  btc: "133741",
-};
-
-function parseCotValue(records, code) {
-  if (!records || !records.length) return { longs: "—", shorts: "—", net: "—" };
-  const r = records.find(x => x.cftc_commodity_code === code || x.market_and_exchange_names?.includes(code));
-  if (!r) return { longs: "—", shorts: "—", net: "—" };
-  const longs = parseInt(r.noncomm_positions_long_all || r.comm_positions_long_all || 0);
-  const shorts = parseInt(r.noncomm_positions_short_all || r.comm_positions_short_all || 0);
-  const net = longs - shorts;
+function getNet(r) {
+  if (!r) return { bias: "—", net: "—", pct: "", color: "#888" };
+  const l = parseInt(r.noncomm_positions_long_all || 0);
+  const s = parseInt(r.noncomm_positions_short_all || 0);
+  const net = l - s;
+  const total = l + s;
+  const pct = total > 0 ? ((net / total) * 100).toFixed(1) : "0";
   return {
-    longs: (longs / 1000).toFixed(1) + "k",
-    shorts: (shorts / 1000).toFixed(1) + "k",
-    net: (net > 0 ? "+" : "") + (net / 1000).toFixed(1) + "k",
     bias: net > 0 ? "Longs" : "Shorts",
+    net: (net > 0 ? "+" : "") + (net / 1000).toFixed(0) + "k",
+    pct: (net > 0 ? "+" : "") + pct + "%",
     color: net > 0 ? "#26a69a" : "#ef5350",
   };
 }
@@ -94,104 +82,86 @@ function CotPage({ onBack }) {
     setLoading(true);
     setError(null);
     try {
-      // API CFTC Socrata - gratuite, pas de cle requise
-      const baseUrl = "https://publicreporting.cftc.gov/resource/jun7-fc8e.json";
-      const limit = 20;
+      const base = "https://publicreporting.cftc.gov/resource/jun7-fc8e.json";
+      const q = (name) =>
+        fetch(`${base}?$where=market_and_exchange_names like '%25${encodeURIComponent(name)}%25'&$limit=1&$order=report_date_as_yyyy_mm_dd DESC`)
+          .then((r) => r.json())
+          .then((d) => d[0]);
 
-      const [goldRes, wtiRes, euRes, jpyRes, spRes, nqRes, btcRes] = await Promise.all([
-        fetch(`${baseUrl}?cftc_commodity_code=088691&$limit=${limit}&$order=report_date_as_yyyy_mm_dd DESC`),
-        fetch(`${baseUrl}?cftc_commodity_code=067651&$limit=${limit}&$order=report_date_as_yyyy_mm_dd DESC`),
-        fetch(`${baseUrl}?cftc_commodity_code=099741&$limit=${limit}&$order=report_date_as_yyyy_mm_dd DESC`),
-        fetch(`${baseUrl}?cftc_commodity_code=097741&$limit=${limit}&$order=report_date_as_yyyy_mm_dd DESC`),
-        fetch(`${baseUrl}?cftc_commodity_code=13874A&$limit=${limit}&$order=report_date_as_yyyy_mm_dd DESC`),
-        fetch(`${baseUrl}?cftc_commodity_code=20974P&$limit=${limit}&$order=report_date_as_yyyy_mm_dd DESC`),
-        fetch(`${baseUrl}?cftc_commodity_code=133741&$limit=${limit}&$order=report_date_as_yyyy_mm_dd DESC`),
+      const [eu, jpy, gold, wti, sp, nq, btc] = await Promise.all([
+        q("EURO FX"),
+        q("JAPANESE YEN"),
+        q("GOLD"),
+        q("CRUDE OIL"),
+        q("E-MINI S&P 500"),
+        q("E-MINI NASDAQ"),
+        q("BITCOIN"),
       ]);
 
-      const [gold, wti, eu, jpy, sp, nq, btc] = await Promise.all([
-        goldRes.json(), wtiRes.json(), euRes.json(), jpyRes.json(),
-        spRes.json(), nqRes.json(), btcRes.json(),
-      ]);
+      const euD = getNet(eu);
+      const jpyD = getNet(jpy);
+      const goldD = getNet(gold);
+      const wtiD = getNet(wti);
+      const spD = getNet(sp);
+      const nqD = getNet(nq);
+      const btcD = getNet(btc);
 
-      const getLatest = (arr) => arr && arr[0];
-      const getNet = (r, type = "noncomm") => {
-        if (!r) return { bias: "—", net: "—", color: "#888" };
-        const lKey = type === "noncomm" ? "noncomm_positions_long_all" : "comm_positions_long_all";
-        const sKey = type === "noncomm" ? "noncomm_positions_short_all" : "comm_positions_short_all";
-        const l = parseInt(r[lKey] || 0);
-        const s = parseInt(r[sKey] || 0);
-        const net = l - s;
-        const pct = s > 0 ? ((net / s) * 100).toFixed(1) : "0";
-        return {
-          bias: net > 0 ? "Longs" : "Shorts",
-          net: (net > 0 ? "+" : "") + (net / 1000).toFixed(0) + "k",
-          pct: (net > 0 ? "+" : "") + pct + "%",
-          color: net > 0 ? "#26a69a" : "#ef5350",
-        };
-      };
-
-      const goldData = getNet(getLatest(gold), "noncomm");
-      const wtiData = getNet(getLatest(wti), "noncomm");
-      const euData = getNet(getLatest(eu), "noncomm");
-      const jpyData = getNet(getLatest(jpy), "noncomm");
-      const spData = getNet(getLatest(sp), "noncomm");
-      const nqData = getNet(getLatest(nq), "noncomm");
-      const btcData = getNet(getLatest(btc), "noncomm");
-
-      const reportDate = getLatest(gold)?.[" report_date_as_yyyy_mm_dd"] ||
-        getLatest(gold)?.report_date_as_yyyy_mm_dd || "N/A";
+      const reportDate = eu?.report_date_as_yyyy_mm_dd;
+      const dateStr = reportDate
+        ? new Date(reportDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
+        : "—";
 
       setCotData({
-        date: "Semaine du " + (reportDate !== "N/A" ? new Date(reportDate).toLocaleDateString("fr-FR") : "—"),
+        date: "Semaine du " + dateStr,
         blocs: [
           {
             id: "macro",
             icon: "🏛️",
             title: "Macro & Devises",
-            badge: euData.bias === "Shorts" ? "RISK-OFF" : "RISK-ON",
-            badgeColor: euData.bias === "Shorts" ? "#ef5350" : "#26a69a",
+            badge: euD.bias === "Longs" ? "RISK-ON" : "RISK-OFF",
+            badgeColor: euD.bias === "Longs" ? "#26a69a" : "#ef5350",
             rows: [
-              { label: "EUR/USD (Smart Money)", value: euData.bias, change: euData.pct, color: euData.color },
-              { label: "JPY/USD (Smart Money)", value: jpyData.bias, change: jpyData.pct, color: jpyData.color },
-              { label: "Or (Managed Money)", value: goldData.bias, change: goldData.pct, color: goldData.color },
+              { label: "EUR/USD (Non-comm)", value: euD.bias, change: euD.pct, color: euD.color },
+              { label: "JPY/USD (Non-comm)", value: jpyD.bias, change: jpyD.pct, color: jpyD.color },
+              { label: "Or (Non-comm)", value: goldD.bias, change: goldD.pct, color: goldD.color },
             ],
-            note: euData.bias === "Shorts" ? "Pression sur l'euro. Dollar fort." : "Flux vers l'euro. Risk-on global.",
+            note: euD.bias === "Longs" ? "Flux vers les devises risquees. Dollar sous pression." : "Fuite vers le dollar. Risk-off global.",
           },
           {
             id: "indices",
             icon: "📈",
             title: "Indices (ES & NQ)",
-            badge: spData.bias === "Longs" ? "ACHAT" : "VENTE",
-            badgeColor: spData.bias === "Longs" ? "#26a69a" : "#ef5350",
+            badge: spD.bias === "Longs" ? "ACHAT" : "VENTE",
+            badgeColor: spD.bias === "Longs" ? "#26a69a" : "#ef5350",
             rows: [
-              { label: "S&P 500 (Smart Money)", value: spData.bias, change: spData.pct, color: spData.color },
-              { label: "Nasdaq (Smart Money)", value: nqData.bias, change: nqData.pct, color: nqData.color },
+              { label: "S&P 500 (Non-comm)", value: spD.bias, change: spD.pct, color: spD.color },
+              { label: "Nasdaq (Non-comm)", value: nqD.bias, change: nqD.pct, color: nqD.color },
             ],
-            note: spData.bias === "Longs" ? "Institutionnels acheteurs sur les indices." : "Institutionnels vendeurs sur les indices.",
+            note: spD.bias === "Longs" ? "Speculateurs long sur les indices US." : "Speculateurs short sur les indices US.",
           },
           {
             id: "commodities",
             icon: "🛢️",
             title: "Commodities",
-            badge: wtiData.bias === "Longs" ? "HAUSSIER" : "BAISSIER",
-            badgeColor: wtiData.bias === "Longs" ? "#26a69a" : "#ef5350",
+            badge: wtiD.bias === "Longs" ? "HAUSSIER" : "BAISSIER",
+            badgeColor: wtiD.bias === "Longs" ? "#26a69a" : "#ef5350",
             rows: [
-              { label: "WTI (Smart Money)", value: wtiData.bias, change: wtiData.pct, color: wtiData.color },
-              { label: "Or (Smart Money)", value: goldData.bias, change: goldData.net, color: goldData.color },
+              { label: "WTI Crude (Non-comm)", value: wtiD.bias, change: wtiD.pct, color: wtiD.color },
+              { label: "Or net position", value: goldD.net, change: goldD.pct, color: goldD.color },
             ],
-            note: wtiData.bias === "Longs" ? "Petrole soutenu par les institutionnels." : "Pression vendeuse sur le petrole.",
+            note: wtiD.bias === "Longs" ? "Speculateurs acheteurs sur le petrole." : "Pression vendeuse sur le petrole.",
           },
           {
             id: "crypto",
             icon: "₿",
             title: "Cryptos",
-            badge: btcData.bias === "Longs" ? "HAUSSIER" : "BAISSIER",
-            badgeColor: btcData.bias === "Longs" ? "#26a69a" : "#ef5350",
+            badge: btcD.bias === "Longs" ? "HAUSSIER" : "BAISSIER",
+            badgeColor: btcD.bias === "Longs" ? "#26a69a" : "#ef5350",
             rows: [
-              { label: "BTC (Smart Money)", value: btcData.bias, change: btcData.pct, color: btcData.color },
-              { label: "BTC Net Position", value: btcData.net, change: "", color: btcData.color },
+              { label: "BTC (Non-comm)", value: btcD.bias, change: btcD.pct, color: btcD.color },
+              { label: "BTC net position", value: btcD.net, change: "", color: btcD.color },
             ],
-            note: btcData.bias === "Longs" ? "Institutionnels long sur BTC." : "Institutionnels short sur BTC.",
+            note: btcD.bias === "Longs" ? "Speculateurs long sur BTC CME." : "Speculateurs short sur BTC CME.",
           },
         ],
       });
