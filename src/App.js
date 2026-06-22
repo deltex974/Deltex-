@@ -57,100 +57,147 @@ function DeltexLogo({ size = 36 }) {
   );
 }
 
+// Codes CFTC pour chaque marche
+const COT_CODES = {
+  gold: "088691",
+  wti: "067651",
+  eurusd: "099741",
+  jpyusd: "097741",
+  sp500: "13874A",
+  nasdaq: "20974P",
+  btc: "133741",
+};
+
+function parseCotValue(records, code) {
+  if (!records || !records.length) return { longs: "—", shorts: "—", net: "—" };
+  const r = records.find(x => x.cftc_commodity_code === code || x.market_and_exchange_names?.includes(code));
+  if (!r) return { longs: "—", shorts: "—", net: "—" };
+  const longs = parseInt(r.noncomm_positions_long_all || r.comm_positions_long_all || 0);
+  const shorts = parseInt(r.noncomm_positions_short_all || r.comm_positions_short_all || 0);
+  const net = longs - shorts;
+  return {
+    longs: (longs / 1000).toFixed(1) + "k",
+    shorts: (shorts / 1000).toFixed(1) + "k",
+    net: (net > 0 ? "+" : "") + (net / 1000).toFixed(1) + "k",
+    bias: net > 0 ? "Longs" : "Shorts",
+    color: net > 0 ? "#26a69a" : "#ef5350",
+  };
+}
+
 function CotPage({ onBack }) {
   const [loading, setLoading] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState(null);
   const [cotData, setCotData] = useState(null);
   const [error, setError] = useState(null);
+  const [lastUpdate, setLastUpdate] = useState(null);
 
   const fetchCot = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1000,
-          tools: [{ type: "web_search_20250305", name: "web_search" }],
-          messages: [{
-            role: "user",
-            content: `Tu es un analyste COT expert. Cherche les dernières données du rapport COT (Commitment of Traders) de la CFTC publiées cette semaine.
+      // API CFTC Socrata - gratuite, pas de cle requise
+      const baseUrl = "https://publicreporting.cftc.gov/resource/jun7-fc8e.json";
+      const limit = 20;
 
-Retourne UNIQUEMENT un JSON valide avec cette structure exacte, sans texte avant ou après :
-{
-  "date": "date de publication",
-  "blocs": [
-    {
-      "id": "macro",
-      "icon": "🏛️",
-      "title": "Macro & Devises",
-      "badge": "sentiment global ex: RISK-ON ou RISK-OFF",
-      "badgeColor": "#26a69a ou #ef5350",
-      "rows": [
-        { "label": "TAUX US10Y", "value": "ex: 4.32%", "change": "ex: -0.18%" },
-        { "label": "EUR/USD (Smart Money)", "value": "ex: Shorts", "change": "ex: +5.9%" },
-        { "label": "JPY/USD (Leveraged)", "value": "ex: Longs", "change": "ex: -12%" }
-      ],
-      "note": "une phrase de synthese sur la macro"
-    },
-    {
-      "id": "indices",
-      "icon": "📈",
-      "title": "Indices (ES & NQ)",
-      "badge": "sentiment",
-      "badgeColor": "#26a69a ou #ef5350",
-      "rows": [
-        { "label": "S&P 500 (Asset Managers)", "value": "ex: Longs", "change": "ex: +1.7%" },
-        { "label": "Nasdaq (Asset Managers)", "value": "ex: Longs", "change": "ex: +3.8%" },
-        { "label": "Nasdaq (Leveraged)", "value": "ex: Shorts", "change": "ex: -15.2%" }
-      ],
-      "note": "une phrase de synthese sur les indices"
-    },
-    {
-      "id": "commodities",
-      "icon": "🛢️",
-      "title": "Commodities",
-      "badge": "sentiment",
-      "badgeColor": "#26a69a ou #ef5350",
-      "rows": [
-        { "label": "WTI (Producteurs)", "value": "ex: Shorts", "change": "ex: +6.4%" },
-        { "label": "Or (Managed Money)", "value": "ex: Longs", "change": "ex: +3.9%" },
-        { "label": "Or (Open Interest)", "value": "ex: 550k", "change": "ex: Stable" }
-      ],
-      "note": "une phrase de synthese sur les commodities"
-    },
-    {
-      "id": "crypto",
-      "icon": "₿",
-      "title": "Cryptos",
-      "badge": "sentiment",
-      "badgeColor": "#26a69a ou #ef5350",
-      "rows": [
-        { "label": "BTC (Leveraged Longs)", "value": "ex: Fuite", "change": "ex: -21.4%" },
-        { "label": "ETH (Asset Managers)", "value": "ex: Longs", "change": "ex: -1.6%" },
-        { "label": "Flux ETF Spot", "value": "ex: Anemiques", "change": "" }
-      ],
-      "note": "une phrase de synthese sur les cryptos"
-    }
-  ],
-  "synthese": "Une phrase de synthese globale du marche cette semaine"
-}`
-          }]
-        })
+      const [goldRes, wtiRes, euRes, jpyRes, spRes, nqRes, btcRes] = await Promise.all([
+        fetch(`${baseUrl}?cftc_commodity_code=088691&$limit=${limit}&$order=report_date_as_yyyy_mm_dd DESC`),
+        fetch(`${baseUrl}?cftc_commodity_code=067651&$limit=${limit}&$order=report_date_as_yyyy_mm_dd DESC`),
+        fetch(`${baseUrl}?cftc_commodity_code=099741&$limit=${limit}&$order=report_date_as_yyyy_mm_dd DESC`),
+        fetch(`${baseUrl}?cftc_commodity_code=097741&$limit=${limit}&$order=report_date_as_yyyy_mm_dd DESC`),
+        fetch(`${baseUrl}?cftc_commodity_code=13874A&$limit=${limit}&$order=report_date_as_yyyy_mm_dd DESC`),
+        fetch(`${baseUrl}?cftc_commodity_code=20974P&$limit=${limit}&$order=report_date_as_yyyy_mm_dd DESC`),
+        fetch(`${baseUrl}?cftc_commodity_code=133741&$limit=${limit}&$order=report_date_as_yyyy_mm_dd DESC`),
+      ]);
+
+      const [gold, wti, eu, jpy, sp, nq, btc] = await Promise.all([
+        goldRes.json(), wtiRes.json(), euRes.json(), jpyRes.json(),
+        spRes.json(), nqRes.json(), btcRes.json(),
+      ]);
+
+      const getLatest = (arr) => arr && arr[0];
+      const getNet = (r, type = "noncomm") => {
+        if (!r) return { bias: "—", net: "—", color: "#888" };
+        const lKey = type === "noncomm" ? "noncomm_positions_long_all" : "comm_positions_long_all";
+        const sKey = type === "noncomm" ? "noncomm_positions_short_all" : "comm_positions_short_all";
+        const l = parseInt(r[lKey] || 0);
+        const s = parseInt(r[sKey] || 0);
+        const net = l - s;
+        const pct = s > 0 ? ((net / s) * 100).toFixed(1) : "0";
+        return {
+          bias: net > 0 ? "Longs" : "Shorts",
+          net: (net > 0 ? "+" : "") + (net / 1000).toFixed(0) + "k",
+          pct: (net > 0 ? "+" : "") + pct + "%",
+          color: net > 0 ? "#26a69a" : "#ef5350",
+        };
+      };
+
+      const goldData = getNet(getLatest(gold), "noncomm");
+      const wtiData = getNet(getLatest(wti), "noncomm");
+      const euData = getNet(getLatest(eu), "noncomm");
+      const jpyData = getNet(getLatest(jpy), "noncomm");
+      const spData = getNet(getLatest(sp), "noncomm");
+      const nqData = getNet(getLatest(nq), "noncomm");
+      const btcData = getNet(getLatest(btc), "noncomm");
+
+      const reportDate = getLatest(gold)?.[" report_date_as_yyyy_mm_dd"] ||
+        getLatest(gold)?.report_date_as_yyyy_mm_dd || "N/A";
+
+      setCotData({
+        date: "Semaine du " + (reportDate !== "N/A" ? new Date(reportDate).toLocaleDateString("fr-FR") : "—"),
+        blocs: [
+          {
+            id: "macro",
+            icon: "🏛️",
+            title: "Macro & Devises",
+            badge: euData.bias === "Shorts" ? "RISK-OFF" : "RISK-ON",
+            badgeColor: euData.bias === "Shorts" ? "#ef5350" : "#26a69a",
+            rows: [
+              { label: "EUR/USD (Smart Money)", value: euData.bias, change: euData.pct, color: euData.color },
+              { label: "JPY/USD (Smart Money)", value: jpyData.bias, change: jpyData.pct, color: jpyData.color },
+              { label: "Or (Managed Money)", value: goldData.bias, change: goldData.pct, color: goldData.color },
+            ],
+            note: euData.bias === "Shorts" ? "Pression sur l'euro. Dollar fort." : "Flux vers l'euro. Risk-on global.",
+          },
+          {
+            id: "indices",
+            icon: "📈",
+            title: "Indices (ES & NQ)",
+            badge: spData.bias === "Longs" ? "ACHAT" : "VENTE",
+            badgeColor: spData.bias === "Longs" ? "#26a69a" : "#ef5350",
+            rows: [
+              { label: "S&P 500 (Smart Money)", value: spData.bias, change: spData.pct, color: spData.color },
+              { label: "Nasdaq (Smart Money)", value: nqData.bias, change: nqData.pct, color: nqData.color },
+            ],
+            note: spData.bias === "Longs" ? "Institutionnels acheteurs sur les indices." : "Institutionnels vendeurs sur les indices.",
+          },
+          {
+            id: "commodities",
+            icon: "🛢️",
+            title: "Commodities",
+            badge: wtiData.bias === "Longs" ? "HAUSSIER" : "BAISSIER",
+            badgeColor: wtiData.bias === "Longs" ? "#26a69a" : "#ef5350",
+            rows: [
+              { label: "WTI (Smart Money)", value: wtiData.bias, change: wtiData.pct, color: wtiData.color },
+              { label: "Or (Smart Money)", value: goldData.bias, change: goldData.net, color: goldData.color },
+            ],
+            note: wtiData.bias === "Longs" ? "Petrole soutenu par les institutionnels." : "Pression vendeuse sur le petrole.",
+          },
+          {
+            id: "crypto",
+            icon: "₿",
+            title: "Cryptos",
+            badge: btcData.bias === "Longs" ? "HAUSSIER" : "BAISSIER",
+            badgeColor: btcData.bias === "Longs" ? "#26a69a" : "#ef5350",
+            rows: [
+              { label: "BTC (Smart Money)", value: btcData.bias, change: btcData.pct, color: btcData.color },
+              { label: "BTC Net Position", value: btcData.net, change: "", color: btcData.color },
+            ],
+            note: btcData.bias === "Longs" ? "Institutionnels long sur BTC." : "Institutionnels short sur BTC.",
+          },
+        ],
       });
-
-      const data = await response.json();
-      const textBlock = data.content?.find(b => b.type === "text");
-      if (!textBlock) throw new Error("Pas de reponse");
-
-      const clean = textBlock.text.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(clean);
-      setCotData(parsed);
       setLastUpdate(new Date().toLocaleTimeString("fr-FR"));
     } catch (e) {
-      setError("Erreur lors de la recuperation des donnees. Reessaie dans quelques instants.");
+      setError("Erreur : " + e.message);
     } finally {
       setLoading(false);
     }
@@ -166,7 +213,7 @@ Retourne UNIQUEMENT un JSON valide avec cette structure exacte, sans texte avant
           {cotData && <div style={cotStyles.date}>{cotData.date}</div>}
         </div>
         <button onClick={fetchCot} style={{ ...cotStyles.updateBtn, opacity: loading ? 0.6 : 1 }} disabled={loading}>
-          {loading ? "Chargement..." : "🔄 Actualiser"}
+          {loading ? "..." : "🔄 Actualiser"}
         </button>
       </div>
 
@@ -174,7 +221,7 @@ Retourne UNIQUEMENT un JSON valide avec cette structure exacte, sans texte avant
         <div style={cotStyles.empty}>
           <div style={cotStyles.emptyIcon}>📋</div>
           <div style={cotStyles.emptyTitle}>Rapport COT</div>
-          <div style={cotStyles.emptyText}>Clique sur Actualiser pour charger les dernieres donnees CFTC.</div>
+          <div style={cotStyles.emptyText}>Donnees CFTC officielles. Publication chaque vendredi.</div>
           <button onClick={fetchCot} style={cotStyles.emptyBtn}>Charger le rapport</button>
         </div>
       )}
@@ -182,8 +229,8 @@ Retourne UNIQUEMENT un JSON valide avec cette structure exacte, sans texte avant
       {loading && (
         <div style={cotStyles.empty}>
           <div style={cotStyles.emptyIcon}>⏳</div>
-          <div style={cotStyles.emptyTitle}>Analyse en cours...</div>
-          <div style={cotStyles.emptyText}>Recuperation et analyse des donnees CFTC.</div>
+          <div style={cotStyles.emptyTitle}>Chargement...</div>
+          <div style={cotStyles.emptyText}>Recuperation des donnees CFTC.</div>
         </div>
       )}
 
@@ -198,12 +245,6 @@ Retourne UNIQUEMENT un JSON valide avec cette structure exacte, sans texte avant
 
       {cotData && !loading && (
         <>
-          {cotData.synthese && (
-            <div style={cotStyles.synthese}>
-              <span style={cotStyles.syntheseLabel}>Synthese</span>
-              <span style={cotStyles.syntheseText}>{cotData.synthese}</span>
-            </div>
-          )}
           <div style={cotStyles.grid}>
             {cotData.blocs.map((bloc) => (
               <div key={bloc.id} style={cotStyles.bloc}>
@@ -221,11 +262,9 @@ Retourne UNIQUEMENT un JSON valide avec cette structure exacte, sans texte avant
                     <div key={i} style={cotStyles.row}>
                       <span style={cotStyles.rowLabel}>{row.label}</span>
                       <span style={cotStyles.rowRight}>
-                        <span style={cotStyles.rowValue}>{row.value || "—"}</span>
+                        <span style={{ ...cotStyles.rowValue, color: row.color || "#0a0a0a" }}>{row.value}</span>
                         {row.change && (
-                          <span style={{ ...cotStyles.rowChange, color: row.change.startsWith("-") ? "#ef5350" : "#26a69a" }}>
-                            {row.change}
-                          </span>
+                          <span style={{ ...cotStyles.rowChange, color: row.color || "#888" }}>{row.change}</span>
                         )}
                       </span>
                     </div>
@@ -235,7 +274,7 @@ Retourne UNIQUEMENT un JSON valide avec cette structure exacte, sans texte avant
               </div>
             ))}
           </div>
-          {lastUpdate && <div style={cotStyles.updated}>Derniere mise a jour : {lastUpdate}</div>}
+          {lastUpdate && <div style={cotStyles.updated}>Mis a jour : {lastUpdate}</div>}
         </>
       )}
 
@@ -261,9 +300,6 @@ const cotStyles = {
   emptyTitle: { fontSize: 18, fontWeight: 800, color: "#0a0a0a" },
   emptyText: { fontSize: 13, color: "#aaa", maxWidth: 300, lineHeight: 1.6 },
   emptyBtn: { marginTop: 8, background: "#0a0a0a", color: "#fff", border: "none", borderRadius: 8, padding: "12px 28px", fontSize: 14, fontWeight: 700, cursor: "pointer" },
-  synthese: { display: "flex", gap: 10, alignItems: "flex-start", padding: "14px 20px", background: "#f9f9f9", borderBottom: "1px solid #e5e5e5" },
-  syntheseLabel: { fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", color: "#aaa", textTransform: "uppercase", whiteSpace: "nowrap", paddingTop: 2 },
-  syntheseText: { fontSize: 13, color: "#444", lineHeight: 1.5, fontStyle: "italic" },
   grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "16px", maxWidth: 800, margin: "0 auto" },
   bloc: { border: "1px solid #e5e5e5", borderRadius: 10, padding: "16px", background: "#fafafa" },
   blocHeader: { display: "flex", alignItems: "center", gap: 8, marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid #f0f0f0" },
@@ -274,10 +310,10 @@ const cotStyles = {
   row: { display: "flex", justifyContent: "space-between", alignItems: "center" },
   rowLabel: { fontSize: 11, color: "#888", fontWeight: 500 },
   rowRight: { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 },
-  rowValue: { fontSize: 13, fontWeight: 700, color: "#0a0a0a" },
+  rowValue: { fontSize: 13, fontWeight: 700 },
   rowChange: { fontSize: 11, fontWeight: 600 },
   note: { marginTop: 12, fontSize: 11, color: "#888", borderTop: "1px solid #f0f0f0", paddingTop: 10, fontStyle: "italic" },
-  updated: { textAlign: "center", fontSize: 11, color: "#bbb", padding: "8px", marginTop: 4 },
+  updated: { textAlign: "center", fontSize: 11, color: "#bbb", padding: "8px" },
   footer: { borderTop: "1px solid #e5e5e5", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20 },
   footerQuote: { fontSize: 11, color: "#bbb", fontStyle: "italic" },
   footerBrand: { fontSize: 12, fontWeight: 900, letterSpacing: "0.16em", color: "#0a0a0a" },
