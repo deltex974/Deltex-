@@ -77,6 +77,9 @@ function CotPage({ onBack }) {
   const [cotData, setCotData] = useState(null);
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
+  const [activeTab, setActiveTab] = useState("donnees");
+  const [synthese, setSynthese] = useState(null);
+  const [syntheseLoading, setSyntheseLoading] = useState(false);
 
   const fetchCot = async () => {
     setLoading(true);
@@ -89,13 +92,8 @@ function CotPage({ onBack }) {
           .then((d) => d[0]);
 
       const [eu, jpy, gold, wti, sp, nq, btc] = await Promise.all([
-        q("EURO FX"),
-        q("JAPANESE YEN"),
-        q("GOLD"),
-        q("CRUDE OIL"),
-        q("E-MINI S&P 500"),
-        q("E-MINI NASDAQ"),
-        q("BITCOIN"),
+        q("EURO FX"), q("JAPANESE YEN"), q("GOLD"), q("CRUDE OIL"),
+        q("E-MINI S&P 500"), q("E-MINI NASDAQ"), q("BITCOIN"),
       ]);
 
       const euD = getNet(eu);
@@ -111,13 +109,12 @@ function CotPage({ onBack }) {
         ? new Date(reportDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
         : "—";
 
-      setCotData({
+      const data = {
         date: "Semaine du " + dateStr,
+        raw: { eu, jpy, gold, wti, sp, nq, btc },
         blocs: [
           {
-            id: "macro",
-            icon: "🏛️",
-            title: "Macro & Devises",
+            id: "macro", icon: "🏛️", title: "Macro & Devises",
             badge: euD.bias === "Longs" ? "RISK-ON" : "RISK-OFF",
             badgeColor: euD.bias === "Longs" ? "#26a69a" : "#ef5350",
             rows: [
@@ -125,12 +122,10 @@ function CotPage({ onBack }) {
               { label: "JPY/USD (Non-comm)", value: jpyD.bias, change: jpyD.pct, color: jpyD.color },
               { label: "Or (Non-comm)", value: goldD.bias, change: goldD.pct, color: goldD.color },
             ],
-            note: euD.bias === "Longs" ? "Flux vers les devises risquees. Dollar sous pression." : "Fuite vers le dollar. Risk-off global.",
+            note: euD.bias === "Longs" ? "Flux vers les devises risquees." : "Fuite vers le dollar. Risk-off.",
           },
           {
-            id: "indices",
-            icon: "📈",
-            title: "Indices (ES & NQ)",
+            id: "indices", icon: "📈", title: "Indices (ES & NQ)",
             badge: spD.bias === "Longs" ? "ACHAT" : "VENTE",
             badgeColor: spD.bias === "Longs" ? "#26a69a" : "#ef5350",
             rows: [
@@ -140,9 +135,7 @@ function CotPage({ onBack }) {
             note: spD.bias === "Longs" ? "Speculateurs long sur les indices US." : "Speculateurs short sur les indices US.",
           },
           {
-            id: "commodities",
-            icon: "🛢️",
-            title: "Commodities",
+            id: "commodities", icon: "🛢️", title: "Commodities",
             badge: wtiD.bias === "Longs" ? "HAUSSIER" : "BAISSIER",
             badgeColor: wtiD.bias === "Longs" ? "#26a69a" : "#ef5350",
             rows: [
@@ -152,9 +145,7 @@ function CotPage({ onBack }) {
             note: wtiD.bias === "Longs" ? "Speculateurs acheteurs sur le petrole." : "Pression vendeuse sur le petrole.",
           },
           {
-            id: "crypto",
-            icon: "₿",
-            title: "Cryptos",
+            id: "crypto", icon: "₿", title: "Cryptos",
             badge: btcD.bias === "Longs" ? "HAUSSIER" : "BAISSIER",
             badgeColor: btcD.bias === "Longs" ? "#26a69a" : "#ef5350",
             rows: [
@@ -164,12 +155,31 @@ function CotPage({ onBack }) {
             note: btcD.bias === "Longs" ? "Speculateurs long sur BTC CME." : "Speculateurs short sur BTC CME.",
           },
         ],
-      });
+      };
+      setCotData(data);
       setLastUpdate(new Date().toLocaleTimeString("fr-FR"));
     } catch (e) {
       setError("Erreur : " + e.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSynthese = async () => {
+    if (!cotData) return;
+    setSyntheseLoading(true);
+    try {
+      const res = await fetch("/api/synthese", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cotData: cotData.blocs }),
+      });
+      const data = await res.json();
+      setSynthese(data.synthese);
+    } catch (e) {
+      setSynthese("Erreur lors de la generation de la synthese.");
+    } finally {
+      setSyntheseLoading(false);
     }
   };
 
@@ -187,6 +197,18 @@ function CotPage({ onBack }) {
         </button>
       </div>
 
+      {/* ONGLETS */}
+      <div style={cotStyles.tabs}>
+        <button
+          style={{ ...cotStyles.tab, ...(activeTab === "donnees" ? cotStyles.tabActive : {}) }}
+          onClick={() => setActiveTab("donnees")}
+        >Donnees COT</button>
+        <button
+          style={{ ...cotStyles.tab, ...(activeTab === "synthese" ? cotStyles.tabActive : {}) }}
+          onClick={() => { setActiveTab("synthese"); if (cotData && !synthese) fetchSynthese(); }}
+        >Synthese IA</button>
+      </div>
+
       {!cotData && !loading && !error && (
         <div style={cotStyles.empty}>
           <div style={cotStyles.emptyIcon}>📋</div>
@@ -200,7 +222,6 @@ function CotPage({ onBack }) {
         <div style={cotStyles.empty}>
           <div style={cotStyles.emptyIcon}>⏳</div>
           <div style={cotStyles.emptyTitle}>Chargement...</div>
-          <div style={cotStyles.emptyText}>Recuperation des donnees CFTC.</div>
         </div>
       )}
 
@@ -213,7 +234,7 @@ function CotPage({ onBack }) {
         </div>
       )}
 
-      {cotData && !loading && (
+      {cotData && !loading && activeTab === "donnees" && (
         <>
           <div style={cotStyles.grid}>
             {cotData.blocs.map((bloc) => (
@@ -221,11 +242,7 @@ function CotPage({ onBack }) {
                 <div style={cotStyles.blocHeader}>
                   <span style={cotStyles.blocIcon}>{bloc.icon}</span>
                   <span style={cotStyles.blocTitle}>{bloc.title}</span>
-                  {bloc.badge && (
-                    <span style={{ ...cotStyles.badge, background: bloc.badgeColor }}>
-                      {bloc.badge}
-                    </span>
-                  )}
+                  {bloc.badge && <span style={{ ...cotStyles.badge, background: bloc.badgeColor }}>{bloc.badge}</span>}
                 </div>
                 <div style={cotStyles.rows}>
                   {bloc.rows.map((row, i) => (
@@ -233,9 +250,7 @@ function CotPage({ onBack }) {
                       <span style={cotStyles.rowLabel}>{row.label}</span>
                       <span style={cotStyles.rowRight}>
                         <span style={{ ...cotStyles.rowValue, color: row.color || "#0a0a0a" }}>{row.value}</span>
-                        {row.change && (
-                          <span style={{ ...cotStyles.rowChange, color: row.color || "#888" }}>{row.change}</span>
-                        )}
+                        {row.change && <span style={{ ...cotStyles.rowChange, color: row.color || "#888" }}>{row.change}</span>}
                       </span>
                     </div>
                   ))}
@@ -246,6 +261,43 @@ function CotPage({ onBack }) {
           </div>
           {lastUpdate && <div style={cotStyles.updated}>Mis a jour : {lastUpdate}</div>}
         </>
+      )}
+
+      {cotData && !loading && activeTab === "synthese" && (
+        <div style={cotStyles.syntheseWrap}>
+          {syntheseLoading && (
+            <div style={cotStyles.empty}>
+              <div style={cotStyles.emptyIcon}>🤖</div>
+              <div style={cotStyles.emptyTitle}>Generation en cours...</div>
+              <div style={cotStyles.emptyText}>L'IA analyse les donnees COT.</div>
+            </div>
+          )}
+          {!syntheseLoading && !synthese && (
+            <div style={cotStyles.empty}>
+              <div style={cotStyles.emptyIcon}>🤖</div>
+              <div style={cotStyles.emptyTitle}>Synthese IA</div>
+              <div style={cotStyles.emptyText}>Charge d'abord les donnees COT puis genere la synthese.</div>
+              <button onClick={fetchSynthese} style={cotStyles.emptyBtn}>Generer la synthese</button>
+            </div>
+          )}
+          {!syntheseLoading && synthese && (
+            <div style={cotStyles.syntheseCard}>
+              <div style={cotStyles.syntheseHeader}>
+                <span>🤖 Synthese hebdomadaire</span>
+                <button onClick={fetchSynthese} style={cotStyles.regenBtn}>🔄 Regenerer</button>
+              </div>
+              <div style={cotStyles.syntheseText}>{synthese}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!cotData && activeTab === "synthese" && !loading && (
+        <div style={cotStyles.empty}>
+          <div style={cotStyles.emptyIcon}>📋</div>
+          <div style={cotStyles.emptyTitle}>Charge d'abord les donnees</div>
+          <div style={cotStyles.emptyText}>Va dans l'onglet Donnees COT et clique sur Actualiser.</div>
+        </div>
       )}
 
       <div style={cotStyles.footer}>
@@ -265,6 +317,9 @@ const cotStyles = {
   pageTitle: { fontSize: 20, fontWeight: 900, color: "#0a0a0a" },
   date: { fontSize: 11, color: "#aaa", marginTop: 2 },
   updateBtn: { fontSize: 12, fontWeight: 700, border: "1px solid #0a0a0a", borderRadius: 6, padding: "7px 14px", cursor: "pointer", background: "#0a0a0a", color: "#fff" },
+  tabs: { display: "flex", borderBottom: "1px solid #e5e5e5", padding: "0 16px" },
+  tab: { background: "none", border: "none", borderBottom: "2px solid transparent", padding: "12px 16px", fontSize: 13, fontWeight: 600, color: "#aaa", cursor: "pointer", marginBottom: -1 },
+  tabActive: { color: "#0a0a0a", borderBottomColor: "#0a0a0a" },
   empty: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", gap: 12, textAlign: "center" },
   emptyIcon: { fontSize: 40 },
   emptyTitle: { fontSize: 18, fontWeight: 800, color: "#0a0a0a" },
@@ -284,6 +339,11 @@ const cotStyles = {
   rowChange: { fontSize: 11, fontWeight: 600 },
   note: { marginTop: 12, fontSize: 11, color: "#888", borderTop: "1px solid #f0f0f0", paddingTop: 10, fontStyle: "italic" },
   updated: { textAlign: "center", fontSize: 11, color: "#bbb", padding: "8px" },
+  syntheseWrap: { padding: "16px", maxWidth: 800, margin: "0 auto" },
+  syntheseCard: { border: "1px solid #e5e5e5", borderRadius: 10, padding: "20px", background: "#fafafa" },
+  syntheseHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingBottom: 12, borderBottom: "1px solid #f0f0f0", fontSize: 13, fontWeight: 700 },
+  regenBtn: { background: "none", border: "1px solid #e5e5e5", borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer", color: "#0a0a0a" },
+  syntheseText: { fontSize: 13, color: "#333", lineHeight: 1.8, whiteSpace: "pre-wrap" },
   footer: { borderTop: "1px solid #e5e5e5", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20 },
   footerQuote: { fontSize: 11, color: "#bbb", fontStyle: "italic" },
   footerBrand: { fontSize: 12, fontWeight: 900, letterSpacing: "0.16em", color: "#0a0a0a" },
@@ -303,24 +363,17 @@ export default function App() {
           <span style={styles.logoText}>DELTEX</span>
         </div>
       </header>
-
       <main style={styles.main}>
         <div style={styles.cardList}>
           {INDICATORS.map((ind) => (
-            <div
-              key={ind.id}
-              style={{ ...styles.card, cursor: ind.page ? "pointer" : "default" }}
-              onClick={() => ind.page && setCurrentPage(ind.page)}
-            >
+            <div key={ind.id} style={{ ...styles.card, cursor: ind.page ? "pointer" : "default" }} onClick={() => ind.page && setCurrentPage(ind.page)}>
               <div style={styles.cardIcon}>{ind.emoji}</div>
               <div style={styles.cardContent}>
                 <div style={styles.cardTitle}>{ind.title}</div>
                 <div style={styles.cardSubtitle}>{ind.subtitle}</div>
               </div>
               <div style={styles.cardRight}>
-                {ind.page ? (
-                  <span style={styles.arrow}>›</span>
-                ) : (
+                {ind.page ? <span style={styles.arrow}>›</span> : (
                   <>
                     <div style={styles.cardValue}><span style={styles.empty}>--</span></div>
                     {!ind.noChange && <div style={styles.cardChange}><span style={styles.emptyChange}>+0.00%</span></div>}
@@ -329,7 +382,6 @@ export default function App() {
               </div>
             </div>
           ))}
-
           <div style={styles.card}>
             <div style={styles.cardIcon}>{getFngEmoji(fngValue)}</div>
             <div style={styles.cardContent}>
@@ -338,12 +390,9 @@ export default function App() {
             </div>
             <div style={styles.cardRight}>
               <div style={styles.cardValue}>{fngValue}</div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: fngValue <= 40 ? "#ef5350" : fngValue <= 60 ? "#888" : "#26a69a" }}>
-                {getFngLabel(fngValue)}
-              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: fngValue <= 40 ? "#ef5350" : fngValue <= 60 ? "#888" : "#26a69a" }}>{getFngLabel(fngValue)}</div>
             </div>
           </div>
-
           <div style={styles.sliderWrap}>
             <span style={styles.sliderLabel}>Demo F&G :</span>
             <input type="range" min="0" max="100" value={fngValue} onChange={(e) => setFngValue(Number(e.target.value))} style={styles.slider} />
@@ -351,7 +400,6 @@ export default function App() {
           </div>
         </div>
       </main>
-
       <footer style={styles.footer}>
         <span style={styles.footerLogo}>DELTEX</span>
         <span style={styles.footerText}>2026 - Pas de conseil en investissement.</span>
