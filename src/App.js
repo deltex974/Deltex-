@@ -206,7 +206,7 @@ function CotPage({ onBack }) {
         <button
           style={{ ...cotStyles.tab, ...(activeTab === "synthese" ? cotStyles.tabActive : {}) }}
           onClick={() => { setActiveTab("synthese"); if (cotData && !synthese) fetchSynthese(); }}
-        >Synthese IA</button>
+        >Synthese</button>
       </div>
 
       {!cotData && !loading && !error && (
@@ -275,7 +275,7 @@ function CotPage({ onBack }) {
           {!syntheseLoading && !synthese && (
             <div style={cotStyles.empty}>
               <div style={cotStyles.emptyIcon}>🤖</div>
-              <div style={cotStyles.emptyTitle}>Synthese IA</div>
+              <div style={cotStyles.emptyTitle}>Synthese</div>
               <div style={cotStyles.emptyText}>Charge d'abord les donnees COT puis genere la synthese.</div>
               <button onClick={fetchSynthese} style={cotStyles.emptyBtn}>Generer la synthese</button>
             </div>
