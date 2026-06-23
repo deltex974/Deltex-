@@ -30,7 +30,8 @@ export default async function handler(req, res) {
 
       },
       body: JSON.stringify({
-        model: "llama3-8b-8192",
+        model: "llama-3.3-70b-versatile"
+
         messages: [{ role: "user",  content: `Tu es un analyste macro expert. Voici les positions COT: ${context}. Genere une synthese en francais avec 3 sections: 1) LA GRAVITE MACRO 2) ANALYSE STRUCTURELLE 3) EXECUTION TACTIQUE. Sois concis et percutant.` }],
         max_tokens: 800,
       }),
