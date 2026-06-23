@@ -80,6 +80,7 @@ function CotPage({ onBack }) {
   const [activeTab, setActiveTab] = useState("donnees");
   const [synthese, setSynthese] = useState(null);
   const [syntheseLoading, setSyntheseLoading] = useState(false);
+  const [syntheseError, setSyntheseError] = useState(null);
 
   const fetchCot = async () => {
     setLoading(true);
@@ -88,30 +89,21 @@ function CotPage({ onBack }) {
       const base = "https://publicreporting.cftc.gov/resource/jun7-fc8e.json";
       const q = (name) =>
         fetch(`${base}?$where=market_and_exchange_names like '%25${encodeURIComponent(name)}%25'&$limit=1&$order=report_date_as_yyyy_mm_dd DESC`)
-          .then((r) => r.json())
-          .then((d) => d[0]);
+          .then((r) => r.json()).then((d) => d[0]);
 
       const [eu, jpy, gold, wti, sp, nq, btc] = await Promise.all([
         q("EURO FX"), q("JAPANESE YEN"), q("GOLD"), q("CRUDE OIL"),
         q("E-MINI S&P 500"), q("E-MINI NASDAQ"), q("BITCOIN"),
       ]);
 
-      const euD = getNet(eu);
-      const jpyD = getNet(jpy);
-      const goldD = getNet(gold);
-      const wtiD = getNet(wti);
-      const spD = getNet(sp);
-      const nqD = getNet(nq);
-      const btcD = getNet(btc);
+      const euD = getNet(eu); const jpyD = getNet(jpy); const goldD = getNet(gold);
+      const wtiD = getNet(wti); const spD = getNet(sp); const nqD = getNet(nq); const btcD = getNet(btc);
 
       const reportDate = eu?.report_date_as_yyyy_mm_dd;
-      const dateStr = reportDate
-        ? new Date(reportDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
-        : "—";
+      const dateStr = reportDate ? new Date(reportDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }) : "—";
 
-      const data = {
+      setCotData({
         date: "Semaine du " + dateStr,
-        raw: { eu, jpy, gold, wti, sp, nq, btc },
         blocs: [
           {
             id: "macro", icon: "🏛️", title: "Macro & Devises",
@@ -142,7 +134,7 @@ function CotPage({ onBack }) {
               { label: "WTI Crude (Non-comm)", value: wtiD.bias, change: wtiD.pct, color: wtiD.color },
               { label: "Or net position", value: goldD.net, change: goldD.pct, color: goldD.color },
             ],
-            note: wtiD.bias === "Longs" ? "Speculateurs acheteurs sur le petrole." : "Pression vendeuse sur le petrole.",
+            note: wtiD.bias === "Longs" ? "Acheteurs sur le petrole." : "Pression vendeuse sur le petrole.",
           },
           {
             id: "crypto", icon: "₿", title: "Cryptos",
@@ -155,8 +147,7 @@ function CotPage({ onBack }) {
             note: btcD.bias === "Longs" ? "Speculateurs long sur BTC CME." : "Speculateurs short sur BTC CME.",
           },
         ],
-      };
-      setCotData(data);
+      });
       setLastUpdate(new Date().toLocaleTimeString("fr-FR"));
     } catch (e) {
       setError("Erreur : " + e.message);
@@ -166,18 +157,19 @@ function CotPage({ onBack }) {
   };
 
   const fetchSynthese = async () => {
-    if (!cotData) return;
     setSyntheseLoading(true);
+    setSyntheseError(null);
     try {
       const res = await fetch("/api/synthese", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cotData: cotData.blocs }),
+        body: JSON.stringify({}),
       });
       const data = await res.json();
+      if (data.error) throw new Error(data.error);
       setSynthese(data.synthese);
     } catch (e) {
-      setSynthese("Erreur lors de la generation de la synthese.");
+      setSyntheseError("Erreur : " + e.message);
     } finally {
       setSyntheseLoading(false);
     }
@@ -197,90 +189,73 @@ function CotPage({ onBack }) {
         </button>
       </div>
 
-      {/* ONGLETS */}
       <div style={cotStyles.tabs}>
-        <button
-          style={{ ...cotStyles.tab, ...(activeTab === "donnees" ? cotStyles.tabActive : {}) }}
-          onClick={() => setActiveTab("donnees")}
-        >Donnees COT</button>
-        <button
-          style={{ ...cotStyles.tab, ...(activeTab === "synthese" ? cotStyles.tabActive : {}) }}
-          onClick={() => { setActiveTab("synthese"); if (cotData && !synthese) fetchSynthese(); }}
-        >Synthese</button>
+        <button style={{ ...cotStyles.tab, ...(activeTab === "donnees" ? cotStyles.tabActive : {}) }} onClick={() => setActiveTab("donnees")}>Donnees COT</button>
+        <button style={{ ...cotStyles.tab, ...(activeTab === "synthese" ? cotStyles.tabActive : {}) }} onClick={() => setActiveTab("synthese")}>Synthese</button>
       </div>
 
-      {!cotData && !loading && !error && (
-        <div style={cotStyles.empty}>
-          <div style={cotStyles.emptyIcon}>📋</div>
-          <div style={cotStyles.emptyTitle}>Rapport COT</div>
-          <div style={cotStyles.emptyText}>Donnees CFTC officielles. Publication chaque vendredi.</div>
-          <button onClick={fetchCot} style={cotStyles.emptyBtn}>Charger le rapport</button>
-        </div>
-      )}
-
-      {loading && (
-        <div style={cotStyles.empty}>
-          <div style={cotStyles.emptyIcon}>⏳</div>
-          <div style={cotStyles.emptyTitle}>Chargement...</div>
-        </div>
-      )}
-
-      {error && (
-        <div style={cotStyles.empty}>
-          <div style={cotStyles.emptyIcon}>⚠️</div>
-          <div style={cotStyles.emptyTitle}>Erreur</div>
-          <div style={cotStyles.emptyText}>{error}</div>
-          <button onClick={fetchCot} style={cotStyles.emptyBtn}>Reessayer</button>
-        </div>
-      )}
-
-      {cotData && !loading && activeTab === "donnees" && (
+      {activeTab === "donnees" && (
         <>
-          <div style={cotStyles.grid}>
-            {cotData.blocs.map((bloc) => (
-              <div key={bloc.id} style={cotStyles.bloc}>
-                <div style={cotStyles.blocHeader}>
-                  <span style={cotStyles.blocIcon}>{bloc.icon}</span>
-                  <span style={cotStyles.blocTitle}>{bloc.title}</span>
-                  {bloc.badge && <span style={{ ...cotStyles.badge, background: bloc.badgeColor }}>{bloc.badge}</span>}
-                </div>
-                <div style={cotStyles.rows}>
-                  {bloc.rows.map((row, i) => (
-                    <div key={i} style={cotStyles.row}>
-                      <span style={cotStyles.rowLabel}>{row.label}</span>
-                      <span style={cotStyles.rowRight}>
-                        <span style={{ ...cotStyles.rowValue, color: row.color || "#0a0a0a" }}>{row.value}</span>
-                        {row.change && <span style={{ ...cotStyles.rowChange, color: row.color || "#888" }}>{row.change}</span>}
-                      </span>
+          {!cotData && !loading && !error && (
+            <div style={cotStyles.empty}>
+              <div style={cotStyles.emptyIcon}>📋</div>
+              <div style={cotStyles.emptyTitle}>Rapport COT</div>
+              <div style={cotStyles.emptyText}>Donnees CFTC officielles. Publication chaque vendredi.</div>
+              <button onClick={fetchCot} style={cotStyles.emptyBtn}>Charger le rapport</button>
+            </div>
+          )}
+          {loading && <div style={cotStyles.empty}><div style={cotStyles.emptyIcon}>⏳</div><div style={cotStyles.emptyTitle}>Chargement...</div></div>}
+          {error && <div style={cotStyles.empty}><div style={cotStyles.emptyIcon}>⚠️</div><div style={cotStyles.emptyTitle}>Erreur</div><div style={cotStyles.emptyText}>{error}</div><button onClick={fetchCot} style={cotStyles.emptyBtn}>Reessayer</button></div>}
+          {cotData && !loading && (
+            <>
+              <div style={cotStyles.grid}>
+                {cotData.blocs.map((bloc) => (
+                  <div key={bloc.id} style={cotStyles.bloc}>
+                    <div style={cotStyles.blocHeader}>
+                      <span style={cotStyles.blocIcon}>{bloc.icon}</span>
+                      <span style={cotStyles.blocTitle}>{bloc.title}</span>
+                      {bloc.badge && <span style={{ ...cotStyles.badge, background: bloc.badgeColor }}>{bloc.badge}</span>}
                     </div>
-                  ))}
-                </div>
-                {bloc.note && <div style={cotStyles.note}>⚡ {bloc.note}</div>}
+                    <div style={cotStyles.rows}>
+                      {bloc.rows.map((row, i) => (
+                        <div key={i} style={cotStyles.row}>
+                          <span style={cotStyles.rowLabel}>{row.label}</span>
+                          <span style={cotStyles.rowRight}>
+                            <span style={{ ...cotStyles.rowValue, color: row.color || "#0a0a0a" }}>{row.value}</span>
+                            {row.change && <span style={{ ...cotStyles.rowChange, color: row.color || "#888" }}>{row.change}</span>}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {bloc.note && <div style={cotStyles.note}>⚡ {bloc.note}</div>}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          {lastUpdate && <div style={cotStyles.updated}>Mis a jour : {lastUpdate}</div>}
+              {lastUpdate && <div style={cotStyles.updated}>Mis a jour : {lastUpdate}</div>}
+            </>
+          )}
         </>
       )}
 
-      {cotData && !loading && activeTab === "synthese" && (
+      {activeTab === "synthese" && (
         <div style={cotStyles.syntheseWrap}>
-          {syntheseLoading && (
+          {!synthese && !syntheseLoading && (
             <div style={cotStyles.empty}>
               <div style={cotStyles.emptyIcon}>🤖</div>
+              <div style={cotStyles.emptyTitle}>Synthese hebdomadaire</div>
+              <div style={cotStyles.emptyText}>L'IA analyse les positions COT et genere un recap marche complet.</div>
+              {syntheseError && <div style={{ color: "#ef5350", fontSize: 12, marginTop: 8 }}>{syntheseError}</div>}
+              <button onClick={fetchSynthese} style={cotStyles.emptyBtn}>Generer la synthese</button>
+            </div>
+          )}
+          {syntheseLoading && (
+            <div style={cotStyles.empty}>
+              <div style={cotStyles.emptyIcon}>⏳</div>
               <div style={cotStyles.emptyTitle}>Generation en cours...</div>
               <div style={cotStyles.emptyText}>L'IA analyse les donnees COT.</div>
             </div>
           )}
-          {!syntheseLoading && !synthese && (
-            <div style={cotStyles.empty}>
-              <div style={cotStyles.emptyIcon}>🤖</div>
-              <div style={cotStyles.emptyTitle}>Synthese</div>
-              <div style={cotStyles.emptyText}>Charge d'abord les donnees COT puis genere la synthese.</div>
-              <button onClick={fetchSynthese} style={cotStyles.emptyBtn}>Generer la synthese</button>
-            </div>
-          )}
-          {!syntheseLoading && synthese && (
+          {synthese && !syntheseLoading && (
             <div style={cotStyles.syntheseCard}>
               <div style={cotStyles.syntheseHeader}>
                 <span>🤖 Synthese hebdomadaire</span>
@@ -289,14 +264,6 @@ function CotPage({ onBack }) {
               <div style={cotStyles.syntheseText}>{synthese}</div>
             </div>
           )}
-        </div>
-      )}
-
-      {!cotData && activeTab === "synthese" && !loading && (
-        <div style={cotStyles.empty}>
-          <div style={cotStyles.emptyIcon}>📋</div>
-          <div style={cotStyles.emptyTitle}>Charge d'abord les donnees</div>
-          <div style={cotStyles.emptyText}>Va dans l'onglet Donnees COT et clique sur Actualiser.</div>
         </div>
       )}
 
