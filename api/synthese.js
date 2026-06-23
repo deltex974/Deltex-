@@ -20,17 +20,9 @@ export default async function handler(req, res) {
       return { bias: net > 0 ? "Long" : "Short", pct: total > 0 ? ((net/total)*100).toFixed(1)+"%" : "0%" };
     };
 
-    const context = `
-EUR/USD: ${getNet(eu).bias} (${getNet(eu).pct})
-JPY/USD: ${getNet(jpy).bias} (${getNet(jpy).pct})
-Or: ${getNet(gold).bias} (${getNet(gold).pct})
-WTI: ${getNet(wti).bias} (${getNet(wti).pct})
-S&P500: ${getNet(sp).bias} (${getNet(sp).pct})
-Nasdaq: ${getNet(nq).bias} (${getNet(nq).pct})
-BTC: ${getNet(btc).bias} (${getNet(btc).pct})
-    `;
+    const context = `EUR/USD: ${getNet(eu).bias} (${getNet(eu).pct}), JPY/USD: ${getNet(jpy).bias} (${getNet(jpy).pct}), Or: ${getNet(gold).bias} (${getNet(gold).pct}), WTI: ${getNet(wti).bias} (${getNet(wti).pct}), SP500: ${getNet(sp).bias} (${getNet(sp).pct}), Nasdaq: ${getNet(nq).bias} (${getNet(nq).pct}), BTC: ${getNet(btc).bias} (${getNet(btc).pct})`;
 
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -38,15 +30,18 @@ BTC: ${getNet(btc).bias} (${getNet(btc).pct})
       },
       body: JSON.stringify({
         model: "llama3-8b-8192",
-        messages: [{
-          role: "user",
-          content: `Tu es un analyste macro expert en Smart Money. Voici les positions COT de la semaine:\n${context}\n\nGenere une synthese hebdomadaire en francais avec 3 sections:\n1) LA GRAVITE MACRO\n2) ANALYSE STRUCTURELLE\n3) EXECUTION TACTIQUE\n\nSois concis, percutant et professionnel.`
-        }],
+        messages: [{ role: "user", content: `Tu es un analyste macro expert. Voici les positions COT: ${context}. Genere une synthese en francais avec 3 sections: 1) LA GRAVITE MACRO 2) ANALYSE STRUCTURELLE 3) EXECUTION TACTIQUE. Sois concis et percutant.` }],
         max_tokens: 800,
       }),
     });
-    const data = await response.json();
-    res.json({ synthese: data.choices[0].message.content });
+
+    const groqData = await groqRes.json();
+    
+    if (!groqData.choices || !groqData.choices[0]) {
+      return res.status(500).json({ error: JSON.stringify(groqData) });
+    }
+
+    res.json({ synthese: groqData.choices[0].message.content });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
