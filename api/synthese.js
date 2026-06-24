@@ -2,13 +2,16 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   try {
     const base = "https://publicreporting.cftc.gov/resource/jun7-fc8e.json";
-    const q = (name) =>
-      fetch(`${base}?$where=market_and_exchange_names like '%25${name}%25'&$limit=1&$order=report_date_as_yyyy_mm_dd DESC`)
-        .then(r => r.json()).then(d => d[0]);
+    const q = async (name) => {
+      const url = `${base}?$limit=1&$order=report_date_as_yyyy_mm_dd DESC&$where=market_and_exchange_names like '${name}'`;
+      const r = await fetch(url);
+      const d = await r.json();
+      return d[0];
+    };
 
     const [eu, jpy, gold, wti, sp, nq, btc] = await Promise.all([
       q("EURO FX"), q("JAPANESE YEN"), q("GOLD"), q("CRUDE OIL"),
-      q("E-MINI S%26P 500"), q("E-MINI NASDAQ"), q("BITCOIN"),
+      q("E-MINI S"), q("E-MINI NASDAQ"), q("BITCOIN"),
     ]);
 
     const getNet = (r) => {
@@ -24,7 +27,7 @@ export default async function handler(req, res) {
       };
     };
 
-    const date = eu?.report_date_as_yyyy_mm_dd || "inconnue";
+    const date = eu?.report_date_as_yyyy_mm_dd || "semaine en cours";
     const euD = getNet(eu);
     const jpyD = getNet(jpy);
     const goldD = getNet(gold);
@@ -33,36 +36,23 @@ export default async function handler(req, res) {
     const nqD = getNet(nq);
     const btcD = getNet(btc);
 
-    const prompt = `Tu es un analyste macro expert en Smart Money Concept (SMC). 
-Voici les donnees COT officielles de la CFTC pour la semaine du ${date} :
+    const prompt = `Tu es un analyste macro expert, nous sommes en juin 2026.
+Voici les positions COT reelles de la CFTC semaine du ${date} :
 
-DEVISES :
-- EUR/USD : ${euD.bias} (${euD.pct}, ${euD.net})
-- JPY/USD : ${jpyD.bias} (${jpyD.pct}, ${jpyD.net})
+EUR/USD : ${euD.bias} ${euD.pct} (${euD.net})
+JPY/USD : ${jpyD.bias} ${jpyD.pct} (${jpyD.net})
+Or : ${goldD.bias} ${goldD.pct} (${goldD.net})
+WTI : ${wtiD.bias} ${wtiD.pct} (${wtiD.net})
+SP500 : ${spD.bias} ${spD.pct} (${spD.net})
+Nasdaq : ${nqD.bias} ${nqD.pct} (${nqD.net})
+BTC CME : ${btcD.bias} ${btcD.pct} (${btcD.net})
 
-MATIERES PREMIERES :
-- Or : ${goldD.bias} (${goldD.pct}, ${goldD.net})
-- WTI Petrole : ${wtiD.bias} (${wtiD.pct}, ${wtiD.net})
-
-INDICES US :
-- S&P 500 : ${spD.bias} (${spD.pct}, ${spD.net})
-- Nasdaq : ${nqD.bias} (${nqD.pct}, ${nqD.net})
-
-CRYPTO :
-- BTC CME : ${btcD.bias} (${btcD.pct}, ${btcD.net})
-
-Sur la base de ces donnees reelles, genere une synthese hebdomadaire professionnelle en francais avec exactement 3 sections :
-
+Genere une synthese en francais avec 3 sections :
 **LA GRAVITE MACRO**
-(analyse du contexte macro global : dollar, taux, risque)
-
 **ANALYSE STRUCTURELLE**
-(ce que font les institutionnels sur chaque marche, correlations)
-
 **EXECUTION TACTIQUE**
-(biais directionnel clair, actifs a privilegier, risques a surveiller)
 
-Sois concis, percutant, professionnel. Pas de disclaimer. Parle comme un trader institutionnel.`;
+Parle comme un trader institutionnel. Concis et percutant. Pas de disclaimer. Base toi uniquement sur ces donnees COT reelles.`;
 
     const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
