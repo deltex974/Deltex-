@@ -18,7 +18,7 @@ function getFngLabel(value) {
 
 const INDICATORS = [
   { id: 3, emoji: "📋", title: "Rapport COT", subtitle: "Commitment of Traders", noChange: true, page: "cot" },
-  { id: 4, emoji: "⚡", title: "GEX", subtitle: "Gamma Exposure", noChange: true },
+  { id: 4, emoji: "⚡", title: "GEX & DEX", subtitle: "Gamma & Delta Exposure", noChange: true },
   { id: 5, emoji: "🏦", title: "ETF BTC / ETH", subtitle: "Flux et encours ETF Spot" },
   { id: 6, emoji: "🔥", title: "Liquidation Heatmap", subtitle: "Niveaux de liquidation", noChange: true },
 ];
