@@ -8,7 +8,7 @@ export default async function handler(req, res) {
         "Authorization": "Bearer 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",
       },
       body: JSON.stringify({
-        model: "llama3-70b-8192",
+        model: "qwen/qwen3.6-27b"
         messages: [{ role: "user", content: "Genere une synthese macro hebdomadaire fictive en francais avec 3 sections: 1) LA GRAVITE MACRO 2) ANALYSE STRUCTURELLE 3) EXECUTION TACTIQUE. Sois concis et percutant." }],
         max_tokens: 800,
       }),
